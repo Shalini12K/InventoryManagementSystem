@@ -95,6 +95,62 @@ public class DashboardView {
         }).start();
     }
 
+    private void updateBarChart(String json) {
+
+        List<Map<String, Object>> products =
+                new Gson().fromJson(json, new TypeToken<List<Map<String, Object>>>() {}.getType());
+
+        stockBarChart.getData().clear();
+
+        // Sort & limit
+        List<Map<String, Object>> topProducts = products.stream()
+                .sorted((a, b) -> Double.compare((double) b.get("quantity"), (double) a.get("quantity")))
+                .limit(8)
+                .toList();
+
+        // ---- VERY IMPORTANT: Set categories explicitly ----
+        ObservableList<String> categories = FXCollections.observableArrayList();
+        topProducts.forEach(p -> categories.add((String) p.get("name")));
+        ((CategoryAxis) stockBarChart.getYAxis()).setCategories(categories);
+
+        XYChart.Series<Number, String> series = new XYChart.Series<>();
+
+        for (Map<String, Object> p : topProducts) {
+            double qty = (Double) p.get("quantity");
+            String name = (String) p.get("name");
+
+            XYChart.Data<Number, String> data = new XYChart.Data<>(qty, name);
+            series.getData().add(data);
+
+            data.nodeProperty().addListener((obs, oldNode, node) -> {
+                if (node != null) {
+                    node.setStyle("-fx-bar-fill: " + getBarColor(name) + ";");
+                }
+            });
+        }
+
+        stockBarChart.getData().add(series);
+
+        // ---- Reorder list ----
+        poListContainer.getChildren().clear();
+        products.stream()
+                .filter(p -> (double) p.get("quantity") < 15)
+                .limit(6)
+                .forEach(p -> {
+                    Label l = new Label("⚠️ Low Stock: " + p.get("name") +
+                            " (" + ((Double) p.get("quantity")).intValue() + ")");
+                    l.setStyle("""
+                        -fx-text-fill: #c53030;
+                        -fx-font-weight: bold;
+                        -fx-padding: 8;
+                        -fx-background-color: #fff5f5;
+                        -fx-background-radius: 5;
+                        """);
+                    l.setMaxWidth(Double.MAX_VALUE);
+                    poListContainer.getChildren().add(l);
+                });
+    }
+
     private void addTextInsideBar(javafx.scene.Node barNode, String text) {
         // We use Platform.runLater to ensure the bar is rendered before calculating position
         Platform.runLater(() -> {
@@ -113,6 +169,20 @@ public class DashboardView {
 
             parent.getChildren().add(label);
         });
+    }
+
+     private void updateSummaryUI(String json) {
+        Map<String, Object> data = new Gson().fromJson(json, new TypeToken<Map<String, Object>>() {}.getType());
+        totalProductsLabel.setText(String.format("%.0f", data.get("totalCount")));
+        lowStockLabel.setText(String.format("%.0f", data.get("lowStockCount")));
+        totalValueLabel.setText(String.format("Rs. %.2f", (double) data.get("totalValue")));
+
+        Map<String, Double> categoryMap = (Map<String, Double>) data.get("categoryData");
+        ObservableList<PieChart.Data> pieData = FXCollections.observableArrayList();
+        if (categoryMap != null) {
+            categoryMap.forEach((k, v) -> pieData.add(new PieChart.Data(k, v)));
+        }
+        categoryChart.setData(pieData);
     }
 
     private String getBarColor(String name) {
@@ -146,4 +216,5 @@ public class DashboardView {
     }
 
     public Parent getView() { return scrollRoot; }
+
 }
